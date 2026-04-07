@@ -1,0 +1,325 @@
+server code////
+
+
+
+#include <stdio.h>
+#include <winsock2.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
+
+#pragma comment(lib, "ws2_32.lib")
+
+#define PORT 5000
+
+// Simple AI reply generator
+const char *get_ai_reply(const char *msg) {
+    if (strstr(msg, "hi") || strstr(msg, "hello"))
+        return "Hello! How can I help you today?";
+    else if (strstr(msg, "how are you"))
+        return "I'm doing great! Thanks for asking.";
+    else if (strstr(msg, "name"))
+        return "I'm your AI Chatbot Server!";
+    else if (strstr(msg, "bye"))
+        return "Goodbye! Have a great day!";
+    else if (strstr(msg, "time")) {
+        static char buffer[100];
+        time_t now = time(NULL);
+        strftime(buffer, sizeof(buffer), "Current time: %H:%M:%S", localtime(&now));
+        return buffer;
+    }
+    else {
+        static const char *generic_responses[] = {
+            "That's interesting! Tell me more.",
+            "I’m not sure, but that sounds cool.",
+            "Can you explain that a bit more?",
+            "Hmm… I’ll have to think about that.",
+            "Good question! Let’s learn together."
+        };
+        return generic_responses[rand() % 5];
+    }
+}
+
+int main() {
+    WSADATA wsa;
+    SOCKET server_socket, client_socket;
+    struct sockaddr_in server, client;
+    int c;
+    char client_message[2000], reply[2000];
+
+    printf("Starting AI Chatbot Server...\n");
+    if (WSAStartup(MAKEWORD(2,2), &wsa) != 0) {
+        printf("WSAStartup failed. Error Code : %d", WSAGetLastError());
+        return 1;
+    }
+
+    if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
+        printf("Could not create socket : %d", WSAGetLastError());
+        return 1;
+    }
+
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(server_socket, (struct sockaddr *)&server, sizeof(server)) == SOCKET_ERROR) {
+        printf("Bind failed with error code : %d", WSAGetLastError());
+        closesocket(server_socket);
+        WSACleanup();
+        return 1;
+    }
+
+    listen(server_socket, 3);
+    printf("Waiting for incoming connections...\n");
+
+    c = sizeof(struct sockaddr_in);
+    srand(time(NULL)); // Random replies
+
+    client_socket = accept(server_socket, (struct sockaddr *)&client, &c);
+    printf("Client connected!\n");
+
+    while (1) {
+        memset(client_message, 0, sizeof(client_message));
+        int recv_size = recv(client_socket, client_message, 2000, 0);
+        if (recv_size == SOCKET_ERROR || recv_size == 0)
+            break;
+
+        client_message[recv_size] = '\0';
+        printf("Client: %s\n", client_message);
+
+        const char *response = get_ai_reply(client_message);
+        strcpy(reply, response);
+
+        send(client_socket, reply, strlen(reply), 0);
+    }
+
+    closesocket(client_socket);
+    closesocket(server_socket);
+    WSACleanup();
+    return 0;
+}                                                             
+
+
+
+
+
+
+
+
+
+client code///
+#include <gtk/gtk.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <string.h>
+#include <glib.h>
+#include <stdio.h>
+
+#pragma comment(lib, "ws2_32.lib")
+
+#define SERVER_IP "127.0.0.1"
+#define SERVER_PORT 5000
+#define BUFFER_SIZE 2048
+
+typedef struct {
+    GtkWidget *text_view;
+    GtkWidget *entry;
+    SOCKET sock;
+    gboolean connected;
+    GThread *recv_thread;
+} ChatApp;
+
+ChatApp app = {0};
+
+void append_text(const char *msg) {
+    if (!app.text_view) return;
+    
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(app.text_view));
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(buffer, &end);
+    gtk_text_buffer_insert(buffer, &end, msg, -1);
+    gtk_text_buffer_insert(buffer, &end, "\n", -1);
+    
+    gtk_text_buffer_get_end_iter(buffer, &end);
+    GtkTextMark *mark = gtk_text_buffer_create_mark(buffer, NULL, &end, FALSE);
+    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(app.text_view), mark, 0.0, TRUE, 0.0, 1.0);
+    gtk_text_buffer_delete_mark(buffer, mark);
+}
+
+gboolean append_text_idle(gpointer data) {
+    char *msg = (char *)data;
+    append_text(msg);
+    g_free(msg);
+    return FALSE;
+}
+
+gpointer recv_loop(gpointer data) {
+    char buffer[BUFFER_SIZE];
+    
+    while (app.connected) {
+        int r = recv(app.sock, buffer, sizeof(buffer) - 1, 0);
+        if (r <= 0) break;
+        buffer[r] = '\0';
+        
+        char *msg = g_strdup_printf("Bot: %s", buffer);
+        g_idle_add(append_text_idle, msg);
+    }
+    
+    app.connected = FALSE;
+    g_idle_add(append_text_idle, g_strdup("Disconnected from server."));
+    return NULL;
+}
+
+void on_connect_clicked(GtkButton *button, gpointer user_data) {
+    if (app.connected) {
+        append_text("Already connected.");
+        return;
+    }
+
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        append_text("WSAStartup failed.");
+        return;
+    }
+
+    app.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (app.sock == INVALID_SOCKET) {
+        append_text("Socket creation failed.");
+        WSACleanup();
+        return;
+    }
+
+    struct sockaddr_in server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(SERVER_PORT);
+    server.sin_addr.s_addr = inet_addr(SERVER_IP);
+    
+    if (server.sin_addr.s_addr == INADDR_NONE) {
+        append_text("Invalid IP address.");
+        closesocket(app.sock);
+        WSACleanup();
+        return;
+    }
+
+    append_text("Connecting to server...");
+    if (connect(app.sock, (struct sockaddr *)&server, sizeof(server)) == SOCKET_ERROR) {
+        append_text("Connect failed.");
+        closesocket(app.sock);
+        WSACleanup();
+        return;
+    }
+
+    app.connected = TRUE;
+    append_text("Connected to server.");
+
+    app.recv_thread = g_thread_new("recv_thread", recv_loop, NULL);
+}
+
+void on_send_clicked(GtkButton *button, gpointer user_data) {
+    if (!app.connected) {
+        append_text("Not connected. Click Connect first.");
+        return;
+    }
+
+    const char *text = gtk_editable_get_text(GTK_EDITABLE(app.entry));
+    if (strlen(text) == 0) return;
+
+    if (send(app.sock, text, (int)strlen(text), 0) == SOCKET_ERROR) {
+        append_text("Send failed.");
+    } else {
+        char *msg = g_strdup_printf("You: %s", text);
+        append_text(msg);
+        g_free(msg);
+    }
+
+    gtk_editable_set_text(GTK_EDITABLE(app.entry), "");
+
+    if (strcmp(text, "bye") == 0) {
+        app.connected = FALSE;
+        closesocket(app.sock);
+        WSACleanup();
+        append_text("Disconnected.");
+    }
+}
+
+gboolean on_entry_key_press(GtkEventControllerKey *controller, guint keyval,
+                             guint keycode, GdkModifierType state, gpointer user_data) {
+    if (keyval == GDK_KEY_Return) {
+        on_send_clicked(NULL, NULL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void on_window_close(GtkWindow *window, gpointer user_data) {
+    if (app.connected) {
+        app.connected = FALSE;
+        closesocket(app.sock);
+        WSACleanup();
+    }
+    if (app.recv_thread) {
+        g_thread_join(app.recv_thread);
+    }
+}
+
+static void app_activate(GApplication *gapp, gpointer user_data) {
+    GtkWidget *window = gtk_application_window_new(GTK_APPLICATION(gapp));
+    gtk_window_set_title(GTK_WINDOW(window), "GTK4 Chat Client");
+    gtk_window_set_default_size(GTK_WINDOW(window), 500, 400);
+    g_signal_connect(window, "close-request", G_CALLBACK(on_window_close), NULL);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_widget_set_margin_start(vbox, 10);
+    gtk_widget_set_margin_end(vbox, 10);
+    gtk_widget_set_margin_top(vbox, 10);
+    gtk_widget_set_margin_bottom(vbox, 10);
+    gtk_window_set_child(GTK_WINDOW(window), vbox);
+
+    GtkWidget *scrolled_window = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_vexpand(scrolled_window, TRUE);
+    
+    app.text_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(app.text_view), FALSE);
+    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(app.text_view), FALSE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(app.text_view), GTK_WRAP_WORD);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), app.text_view);
+    
+    gtk_box_append(GTK_BOX(vbox), scrolled_window);
+
+    app.entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(app.entry), "Type message...");
+    gtk_box_append(GTK_BOX(vbox), app.entry);
+    
+    GtkEventController *key_controller = gtk_event_controller_key_new();
+    g_signal_connect(key_controller, "key-pressed", G_CALLBACK(on_entry_key_press), NULL);
+    gtk_widget_add_controller(app.entry, key_controller);
+
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_box_set_homogeneous(GTK_BOX(hbox), TRUE);
+    gtk_box_append(GTK_BOX(vbox), hbox);
+
+    GtkWidget *connect_button = gtk_button_new_with_label("Connect");
+    g_signal_connect(connect_button, "clicked", G_CALLBACK(on_connect_clicked), NULL);
+    gtk_box_append(GTK_BOX(hbox), connect_button);
+
+    GtkWidget *send_button = gtk_button_new_with_label("Send");
+    g_signal_connect(send_button, "clicked", G_CALLBACK(on_send_clicked), NULL);
+    gtk_box_append(GTK_BOX(hbox), send_button);
+
+    append_text("Welcome! Click Connect to join the chatbot server (127.0.0.1:5000).");
+    append_text("Or type your message and press Enter.");
+
+    gtk_window_present(GTK_WINDOW(window));
+}
+
+int main(int argc, char *argv[]) {
+    GtkApplication *app_instance = gtk_application_new("com.example.gtkchat", G_APPLICATION_DEFAULT_FLAGS);
+    g_signal_connect(app_instance, "activate", G_CALLBACK(app_activate), NULL);
+    int status = g_application_run(G_APPLICATION(app_instance), argc, argv);
+    g_object_unref(app_instance);
+
+    return status;
+}
