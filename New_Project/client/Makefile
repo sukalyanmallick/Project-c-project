@@ -1,4 +1,4 @@
-# client/Makefile — Build the GTK4 Chat Client
+# client/Makefile — Build the GTK4 Chat Client (C++17 / SOLID)
 #
 # Usage:
 #   make          — build chatbot_client.exe
@@ -8,35 +8,48 @@
 #   GTK4 development headers and pkg-config installed.
 #   On MSYS2/MinGW: pacman -S mingw-w64-x86_64-gtk4
 
-CC      := gcc
-CFLAGS  := -Wall -Wextra -Wpedantic -std=c11 -O2 \
-           -I./include -I../shared \
-           $(shell pkg-config --cflags gtk4)
-LDFLAGS := -lws2_32 $(shell pkg-config --libs gtk4)
+CXX      := g++
+CXXFLAGS := -Wall -Wextra -Wpedantic -std=c++17 -O2 \
+            -I./include -I../shared
+GTK_CFLAGS := $(shell pkg-config --cflags gtk4 2>nul)
+GTK_LDFLAGS := -lws2_32 $(shell pkg-config --libs gtk4 2>nul)
 
-TARGET  := chatbot_client.exe
-SRCS    := src/main.c \
-           src/network_client.c \
-           src/ui_display.c \
-           src/ui_callbacks.c \
-           src/ui_layout.c
+TARGET   := chatbot_client.exe
+CONSOLE_TARGET := chatbot_console.exe
+SRCS     := src/main.cpp          \
+             src/network_client.cpp \
+             src/ui_display.cpp    \
+             src/ui_callbacks.cpp  \
+             src/ui_layout.cpp
 
-OBJS    := $(SRCS:src/%.c=build/%.o)
+CONSOLE_SRCS := src/console_main.cpp \
+                 src/network_client.cpp
 
-.PHONY: all clean
+OBJS     := $(SRCS:src/%.cpp=build/%.o)
+CONSOLE_OBJS := $(CONSOLE_SRCS:src/%.cpp=build/%.o)
 
-all: $(TARGET)
+.PHONY: all clean console
+
+all: $(CONSOLE_TARGET)
+
+console: $(CONSOLE_TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
-	@echo "[Client] Build complete → $(TARGET)"
+	$(CXX) $(OBJS) -o $@ $(GTK_LDFLAGS)
+	@echo "[Client] GUI Build complete → $(TARGET)"
 
-build/%.o: src/%.c | build
-	$(CC) $(CFLAGS) -c $< -o $@
+$(CONSOLE_TARGET): $(CONSOLE_OBJS)
+	$(CXX) $(CONSOLE_OBJS) -o $@ -lws2_32
+	@echo "[Client] Console Build complete → $(CONSOLE_TARGET)"
+
+build/%.o: src/%.cpp | build
+	$(CXX) $(CXXFLAGS) $(GTK_CFLAGS) -c $< -o $@
 
 build:
-	mkdir -p build
+	if not exist build mkdir build
 
 clean:
-	rm -rf build $(TARGET)
+	if exist build rmdir /s /q build
+	if exist $(TARGET) del /q $(TARGET)
+	if exist $(CONSOLE_TARGET) del /q $(CONSOLE_TARGET)
 	@echo "[Client] Clean complete."
