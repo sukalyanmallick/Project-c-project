@@ -28,6 +28,17 @@
 
 namespace ChatBot {
 
+/* ─── IDataReceiver ──────────────────────────────────────────────────────── */
+
+/*
+ * Receives data asynchronously.
+ */
+class IDataReceiver {
+public:
+    virtual void onDataReceived(const char* data) = 0;
+    virtual ~IDataReceiver() = default;
+};
+
 /* ─── IConnectionManager ─────────────────────────────────────────────────── */
 
 /*

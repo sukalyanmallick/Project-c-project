@@ -9,7 +9,6 @@
 #define NETWORK_CLIENT_HPP
 
 #include "INetworkClient.hpp"
-#include "types.hpp"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -21,7 +20,7 @@ namespace ChatBot {
 class TcpNetworkClient final : public IConnectionManager,
                                public IMessageSender {
 public:
-    explicit TcpNetworkClient(ChatApplicationState* appState);
+    TcpNetworkClient();
     ~TcpNetworkClient() override;
 
     TcpNetworkClient(const TcpNetworkClient&)            = delete;
@@ -35,14 +34,16 @@ public:
     /* ── IMessageSender ── */
     bool sendMessage(const char* message) override;
 
+    /* ── IDataReceiver Registration ── */
+    void setReceiver(IDataReceiver* receiver);
+
 private:
-    ChatApplicationState* appState_;
+    IDataReceiver*        receiver_;
     SOCKET                socket_;
     std::atomic<bool>     isConnected_;
     HANDLE                receiveThread_;
 
     static struct sockaddr_in buildServerAddress();
-    void postMessageToUI(const char* text);
     static DWORD WINAPI receiveLoopEntry(LPVOID lpParam);
     void receiveLoop();
 };

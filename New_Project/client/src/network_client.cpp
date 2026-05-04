@@ -10,15 +10,10 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-// Forward declaration of the UI append function (to avoid header bloat)
-namespace ChatBot {
-    void UI_AppendMessage(ChatApplicationState* appState, const char* message);
-}
-
 namespace ChatBot {
 
-TcpNetworkClient::TcpNetworkClient(ChatApplicationState* appState)
-    : appState_(appState),
+TcpNetworkClient::TcpNetworkClient()
+    : receiver_(nullptr),
       socket_(INVALID_SOCKET),
       isConnected_(false),
       receiveThread_(nullptr)
@@ -41,12 +36,8 @@ struct sockaddr_in TcpNetworkClient::buildServerAddress() {
     return addr;
 }
 
-void TcpNetworkClient::postMessageToUI(const char* text) {
-    // This is the only place we still need a "post to UI" mechanism.
-    // For console client, we'll just print. For GUI, this would use g_idle_add.
-    // To keep this file 100% standard, we use a simple check.
-    
-    std::printf("%s\n", text);
+void TcpNetworkClient::setReceiver(IDataReceiver* receiver) {
+    receiver_ = receiver;
 }
 
 void TcpNetworkClient::connect() {
@@ -54,34 +45,34 @@ void TcpNetworkClient::connect() {
 
     WSADATA wsaData{};
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        UI_AppendMessage(appState_, "WSAStartup failed.");
+        if (receiver_) receiver_->onDataReceived("WSAStartup failed.");
         return;
     }
 
     socket_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (socket_ == INVALID_SOCKET) {
-        UI_AppendMessage(appState_, "Socket creation failed.");
+        if (receiver_) receiver_->onDataReceived("Socket creation failed.");
         WSACleanup();
         return;
     }
 
     struct sockaddr_in serverAddr = buildServerAddress();
     if (serverAddr.sin_addr.s_addr == INADDR_NONE) {
-        UI_AppendMessage(appState_, "Invalid IP.");
+        if (receiver_) receiver_->onDataReceived("Invalid IP.");
         closesocket(socket_);
         WSACleanup();
         return;
     }
 
     if (::connect(socket_, reinterpret_cast<struct sockaddr*>(&serverAddr), sizeof(serverAddr)) == SOCKET_ERROR) {
-        UI_AppendMessage(appState_, "Connection failed.");
+        if (receiver_) receiver_->onDataReceived("Connection failed.");
         closesocket(socket_);
         WSACleanup();
         return;
     }
 
     isConnected_ = true;
-    UI_AppendMessage(appState_, "Connected to server.");
+    if (receiver_) receiver_->onDataReceived("Connected to server.");
 
     receiveThread_ = CreateThread(nullptr, 0, TcpNetworkClient::receiveLoopEntry, this, 0, nullptr);
 }
@@ -123,10 +114,12 @@ void TcpNetworkClient::receiveLoop() {
         if (bytes <= 0) break;
         
         buffer[bytes] = '\0';
-        std::printf("Bot: %s\n", buffer);
+        if (receiver_) {
+            receiver_->onDataReceived(buffer);
+        }
     }
     isConnected_ = false;
-    std::printf("[System] Disconnected from server.\n");
+    if (receiver_) receiver_->onDataReceived("[System] Disconnected from server.");
 }
 
 } // namespace ChatBot

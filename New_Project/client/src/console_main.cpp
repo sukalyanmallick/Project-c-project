@@ -1,70 +1,41 @@
 /*
- * client/src/console_main.cpp — Standard C++ Console Chat Client
+ * client/src/console_main.cpp — Standard C++ Console Chat Client (MVC)
+ *
+ * This file is the Composition Root. It instantiates the Model, View, and Controller,
+ * wires them together, and hands over execution to the Controller.
  */
 
 #include "../include/network_client.hpp"
-#include "../../shared/constants.hpp"
-#include <iostream>
-#include <string>
-#include <windows.h>
-
-namespace ChatBot {
-    // Satisfy the forward declaration in network_client.cpp
-    void UI_AppendMessage(ChatApplicationState*, const char* message) {
-        std::cout << "[System] " << message << std::endl;
-    }
-}
+#include "../include/model/ChatModel.hpp"
+#include "../include/view/ConsoleView.hpp"
+#include "../include/controller/ChatController.hpp"
 
 int main() {
     using namespace ChatBot;
 
-    std::cout << "=== AI Chatbot Console Client (Standard C++) ===" << std::endl;
+    // 1. Create Network Implementation
+    auto* network = new TcpNetworkClient();
     
-    // 1. Setup State using standard new
-    auto* appState = new ChatApplicationState();
+    // 2. Create Model, passing network abstractions
+    auto* model = new Model::ChatModel(network, network);
     
-    // 2. Create Network Client
-    auto* network = new TcpNetworkClient(appState);
+    // Wire the network to send data back to the model
+    network->setReceiver(model);
     
-    std::cout << "Connecting to " << DEFAULT_SERVER_IP << ":" << DEFAULT_SERVER_PORT << "..." << std::endl;
-    network->connect();
+    // 3. Create View
+    auto* view = new View::ConsoleView();
+    
+    // 4. Create Controller
+    auto* controller = new Controller::ChatController(model, view);
 
-    // Wait for connection
-    int retry = 0;
-    while(!network->isConnected() && retry < 10) {
-        Sleep(100);
-        retry++;
-    }
+    // 5. Run the application
+    controller->run();
 
-    if (network->isConnected()) {
-        std::cout << "Connected! Type your message (type 'bye' to exit):" << std::endl;
-        
-        std::string input;
-        while (network->isConnected()) {
-            std::cout << "> ";
-            std::getline(std::cin, input);
-            
-            if (input.empty()) continue;
-            
-            if (!network->sendMessage(input.c_str())) {
-                break;
-            }
-            
-            if (input == "bye") {
-                network->disconnect();
-                break;
-            }
-            
-            // Wait a bit for the background thread to print the response
-            Sleep(200); 
-        }
-    } else {
-        std::cout << "Could not connect to server. Is it running?" << std::endl;
-    }
-
+    // 6. Cleanup
+    delete controller;
+    delete view;
+    delete model;
     delete network;
-    delete appState;
 
-    std::cout << "Exiting client." << std::endl;
     return 0;
 }

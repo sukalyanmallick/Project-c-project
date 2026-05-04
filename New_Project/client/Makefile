@@ -23,7 +23,10 @@ SRCS     := src/main.cpp          \
              src/ui_layout.cpp
 
 CONSOLE_SRCS := src/console_main.cpp \
-                 src/network_client.cpp
+                 src/network_client.cpp \
+                 src/model/ChatModel.cpp \
+                 src/view/ConsoleView.cpp \
+                 src/controller/ChatController.cpp
 
 OBJS     := $(SRCS:src/%.cpp=build/%.o)
 CONSOLE_OBJS := $(CONSOLE_SRCS:src/%.cpp=build/%.o)
@@ -42,11 +45,9 @@ $(CONSOLE_TARGET): $(CONSOLE_OBJS)
 	$(CXX) $(CONSOLE_OBJS) -o $@ -lws2_32
 	@echo "[Client] Console Build complete → $(CONSOLE_TARGET)"
 
-build/%.o: src/%.cpp | build
+build/%.o: src/%.cpp
+	if not exist $(subst /,\,$(dir $@)) mkdir $(subst /,\,$(dir $@))
 	$(CXX) $(CXXFLAGS) $(GTK_CFLAGS) -c $< -o $@
-
-build:
-	if not exist build mkdir build
 
 clean:
 	if exist build rmdir /s /q build

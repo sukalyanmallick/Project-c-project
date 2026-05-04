@@ -19,10 +19,11 @@
  *   4. Run the four lifecycle phases.
  */
 
-#include "../include/IServerLifecycle.hpp"
-#include "../include/network_server.hpp"
-#include "../include/ai_engine.hpp"
-#include "../include/IReplyStrategy.hpp"
+#include "../include/controller/IServerLifecycle.hpp"
+#include "../include/controller/network_server.hpp"
+#include "../include/model/ai_engine.hpp"
+#include "../include/model/IReplyStrategy.hpp"
+#include "../include/view/ServerLogger.hpp"
 
 #include <cstdlib>
 #include <cstdio>
@@ -39,7 +40,8 @@ namespace ChatBot {
 int main() {
     using namespace ChatBot;
 
-    std::printf("[Server] AI Chatbot Server starting...\n");
+    View::ServerLogger logger;
+    logger.logInfo("AI Chatbot Server starting...");
 
     /*
      * Seed once at startup so AiRandomStrategy produces varied replies
@@ -59,17 +61,17 @@ int main() {
      * main() depends on the IServerLifecycle interface.
      */
     std::unique_ptr<IServerLifecycle> server =
-        std::make_unique<TcpServer>(engine);
+        std::make_unique<TcpServer>(engine, &logger);
 
     /* ── Four-phase lifecycle ── */
 
     if (!server->initialize()) {
-        std::fprintf(stderr, "[Server] Initialization failed. Exiting.\n");
+        logger.logError("Initialization failed. Exiting.");
         return EXIT_FAILURE;
     }
 
     if (!server->waitForClient()) {
-        std::fprintf(stderr, "[Server] Failed to accept client. Shutting down.\n");
+        logger.logError("Failed to accept client. Shutting down.");
         server->shutdown();
         return EXIT_FAILURE;
     }

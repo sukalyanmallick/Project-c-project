@@ -11,11 +11,12 @@ LDFLAGS  := -lws2_32
 
 TARGET   := chatbot_server.exe
 SRCS     := src/main.cpp          \
-             src/network_server.cpp \
-             src/ai_engine.cpp     \
-             src/ai_keyword.cpp    \
-             src/ai_time.cpp       \
-             src/ai_random.cpp
+             src/controller/network_server.cpp \
+             src/model/ai_engine.cpp     \
+             src/model/ai_keyword.cpp    \
+             src/model/ai_time.cpp       \
+             src/model/ai_random.cpp     \
+             src/view/ServerLogger.cpp
 
 OBJS     := $(SRCS:src/%.cpp=build/%.o)
 
@@ -27,11 +28,15 @@ $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) -o $@ $(LDFLAGS)
 	@echo "[Server] Build complete → $(TARGET)"
 
-build/%.o: src/%.cpp | build
+build/%.o: src/%.cpp
+	if not exist $(subst /,\,$(dir $@)) mkdir $(subst /,\,$(dir $@))
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 build:
 	if not exist build mkdir build
+	if not exist build\model mkdir build\model
+	if not exist build\view mkdir build\view
+	if not exist build\controller mkdir build\controller
 
 clean:
 	if exist build rmdir /s /q build
