@@ -1,44 +1,58 @@
-# AI Chatbot — Refactored Project
+# AI Chatbot — C++ / SOLID Refactored Project
 
-A Windows TCP chatbot built with C (Winsock2) on the server side and
-GTK4 on the client side. The codebase has been split into focused,
-single-purpose modules so each file is easy to read, extend, and test
-in isolation.
+A Windows TCP chatbot built with **C++17** (Winsock2) on the server side and
+**GTK4** on the client side. All source files have been converted from C to C++
+and restructured to apply all five **SOLID principles** throughout.
+
+---
+
+## SOLID Principles Applied
+
+| Principle | Where |
+|---|---|
+| **S** — Single Responsibility | Each class/file owns exactly one concern |
+| **O** — Open/Closed | Add strategies via `addStrategy()` — existing code untouched |
+| **L** — Liskov Substitution | Every concrete strategy is safely substitutable for `IReplyStrategy*` |
+| **I** — Interface Segregation | `IConnectionManager` + `IMessageSender` replace one fat network struct |
+| **D** — Dependency Inversion | `AiEngine` depends on `IReplyStrategy*`; UI depends on `IConnectionManager*` / `IMessageSender*` |
 
 ---
 
 ## Project Structure
 
 ```
-chatBot_refactored/
+New_Project/
 │
 ├── shared/
-│   └── constants.h              ← Single source of truth for all config values
+│   └── constants.hpp              ← Typed constexpr constants in namespace ChatBot
 │
 ├── server/
-│   ├── Makefile
+│   ├── Makefile                   ← g++ / C++17
 │   ├── include/
-│   │   ├── ai_engine.h          ← Strategy type + all strategy + dispatcher declarations
-│   │   └── network_server.h     ← ServerContext + 4-phase lifecycle declarations
+│   │   ├── IReplyStrategy.hpp     ← [NEW] Pure abstract interface (OCP / DIP)
+│   │   ├── IServerLifecycle.hpp   ← [NEW] Four-phase lifecycle interface (ISP / OCP)
+│   │   ├── ai_engine.hpp          ← AiEngine class (SRP / OCP / DIP)
+│   │   └── network_server.hpp     ← TcpServer class (SRP / DIP)
 │   └── src/
-│       ├── main.c               ← Entry point: seeds RNG, runs 4 server phases
-│       ├── network_server.c     ← Initialize / WaitForClient / HandleSession / Shutdown
-│       ├── ai_engine.c          ← Dispatcher: walks strategyTable[], returns first match
-│       ├── ai_keyword.c         ← Strategy: greetings, "name", "bye"
-│       ├── ai_time.c            ← Strategy: current time when "time" is in input
-│       └── ai_random.c          ← Strategy: unconditional random fallback
+│       ├── main.cpp               ← Composition Root: wires strategies → engine → server
+│       ├── network_server.cpp     ← TcpServer: implements IServerLifecycle
+│       ├── ai_engine.cpp          ← AiEngine: dispatch loop over IReplyStrategy*
+│       ├── ai_keyword.cpp         ← AiKeywordStrategy: implements IReplyStrategy (SRP/LSP)
+│       ├── ai_time.cpp            ← AiTimeStrategy:    implements IReplyStrategy (SRP/LSP)
+│       └── ai_random.cpp          ← AiRandomStrategy:  implements IReplyStrategy (SRP/LSP)
 │
 └── client/
-    ├── Makefile
+    ├── Makefile                   ← g++ / C++17
     ├── include/
-    │   ├── network_client.h     ← NetworkContext + Connect/Send/Recv/Disconnect
-    │   └── ui.h                 ← ChatApplicationState + IdleMessageData + all UI decls
+    │   ├── INetworkClient.hpp     ← [NEW] IConnectionManager + IMessageSender (ISP)
+    │   ├── network_client.hpp     ← TcpNetworkClient class
+    │   └── ui.hpp                 ← ChatApplicationState (with ISP interfaces), callbacks
     └── src/
-        ├── main.c               ← GtkApplication entry point, OnActivate callback
-        ├── network_client.c     ← Winsock lifecycle + background receive thread
-        ├── ui_display.c         ← UI_AppendMessage + UI_AppendMessage_Idle
-        ├── ui_callbacks.c       ← OnConnect / OnSend / OnKeyPressed / OnWindowClose
-        └── ui_layout.c          ← UI_BuildLayout: widget tree construction
+        ├── main.cpp               ← Composition Root: creates TcpNetworkClient, injects interfaces
+        ├── network_client.cpp     ← TcpNetworkClient: implements both ISP interfaces
+        ├── ui_display.cpp         ← UI_AppendMessage + Idle wrapper (SRP)
+        ├── ui_callbacks.cpp       ← GTK signal callbacks via IConnectionManager* / IMessageSender*
+        └── ui_layout.cpp          ← Widget tree construction (SRP)
 ```
 
 ---
@@ -47,18 +61,25 @@ chatBot_refactored/
 
 | File | Responsibility |
 |---|---|
-| `shared/constants.h` | All compile-time constants (IP, port, buffer sizes) |
-| `server/src/main.c` | Seeds RNG; runs 4 lifecycle phases in order |
-| `server/src/network_server.c` | TCP socket: bind → listen → accept → recv/send → close |
-| `server/src/ai_engine.c` | Strategy dispatcher: iterates `strategyTable[]` |
-| `server/src/ai_keyword.c` | Keyword matching (hello, bye, name, how are you) |
-| `server/src/ai_time.c` | Replies with current time when "time" is detected |
-| `server/src/ai_random.c` | Random fallback from a pool of generic replies |
-| `client/src/main.c` | GtkApplication; allocates state; hands off to GTK loop |
-| `client/src/network_client.c` | Winsock connect/send/recv-thread/disconnect |
-| `client/src/ui_display.c` | Writes to GtkTextView; idle-safe cross-thread wrapper |
-| `client/src/ui_callbacks.c` | All four GTK signal callbacks |
-| `client/src/ui_layout.c` | Builds widget hierarchy; wires signals; shows welcome text |
+| `shared/constants.hpp` | All `constexpr` config values in `namespace ChatBot` |
+| `server/include/IReplyStrategy.hpp` | Pure abstract strategy interface (OCP/DIP) |
+| `server/include/IServerLifecycle.hpp` | Four-phase lifecycle interface (ISP/OCP) |
+| `server/include/ai_engine.hpp` | `AiEngine` class: owns `vector<unique_ptr<IReplyStrategy>>` |
+| `server/include/network_server.hpp` | `TcpServer` class: implements `IServerLifecycle` |
+| `server/src/main.cpp` | Composition Root: seeds RNG, builds engine + strategies + server |
+| `server/src/network_server.cpp` | Winsock2 TCP lifecycle; delegates AI to injected `AiEngine&` |
+| `server/src/ai_engine.cpp` | Walks strategy vector, returns first non-null reply |
+| `server/src/ai_keyword.cpp` | `AiKeywordStrategy`: greetings, name, bye |
+| `server/src/ai_time.cpp` | `AiTimeStrategy`: replies with current time |
+| `server/src/ai_random.cpp` | `AiRandomStrategy`: unconditional random fallback |
+| `client/include/INetworkClient.hpp` | `IConnectionManager` + `IMessageSender` (ISP split) |
+| `client/include/network_client.hpp` | `TcpNetworkClient`: implements both ISP interfaces |
+| `client/include/ui.hpp` | `ChatApplicationState` (holds interface pointers), callbacks |
+| `client/src/main.cpp` | Composition Root: creates `TcpNetworkClient`, injects as interfaces |
+| `client/src/network_client.cpp` | Winsock connect/send/recv-thread/disconnect |
+| `client/src/ui_display.cpp` | `UI_AppendMessage` + `UI_AppendMessage_Idle` |
+| `client/src/ui_callbacks.cpp` | GTK signal callbacks; access only `IConnectionManager*` / `IMessageSender*` |
+| `client/src/ui_layout.cpp` | Builds widget hierarchy; wires signals |
 
 ---
 
@@ -109,29 +130,36 @@ make clean
 
 ---
 
-## Extending the AI
+## Extending the AI (OCP in action)
 
-To add a new reply category:
+To add a new reply category — **zero existing files change**:
 
-1. Create `server/src/ai_<category>.c` with a function matching
-   the `ReplyStrategy` signature (`const char *fn(const char *)`).
-2. Declare it in `server/include/ai_engine.h`.
-3. Add it to `strategyTable[]` in `server/src/ai_engine.c`.
-4. Add the new `.c` file to `SRCS` in `server/Makefile`.
+1. Create `server/src/ai_<category>.cpp` implementing `IReplyStrategy`:
+   ```cpp
+   class AiWeatherStrategy final : public ChatBot::IReplyStrategy {
+   public:
+       const char* generateReply(const char* input) const override {
+           if (std::strstr(input, "weather")) return "It's always sunny in C++!";
+           return nullptr;
+       }
+   };
+   std::unique_ptr<ChatBot::IReplyStrategy> makeWeatherStrategy() {
+       return std::make_unique<AiWeatherStrategy>();
+   }
+   ```
+2. Declare `makeWeatherStrategy()` in `server/src/main.cpp`.
+3. Call `engine.addStrategy(makeWeatherStrategy());` in `main.cpp`.
+4. Add `src/ai_weather.cpp` to `SRCS` in `server/Makefile`.
 
-No other files need to change.
+No other files change.
 
 ---
 
 ## Key Design Decisions
 
-- **No global variables** — all state flows through `ServerContext`
-  (server) and `ChatApplicationState` (client).
-- **Atomic flag** — `NetworkContext.isConnected` is a `gint` read and
-  written only via `g_atomic_int_get/set` to prevent races between the
-  GTK main thread and the background receive thread.
-- **g_idle_add() bridge** — the receive thread never calls GTK
-  functions directly; it posts `IdleMessageData` payloads to the main
-  loop, which then calls `UI_AppendMessage_Idle`.
-- **Strategy table** — adding a new AI category is a 4-step procedure
-  that never requires editing existing strategy files.
+- **Composition Root** — `main.cpp` in both server and client is the *only* place that names concrete types. All other code works through interfaces.
+- **`std::unique_ptr` ownership** — `AiEngine` owns strategies via `unique_ptr`; no manual `delete`.
+- **Atomic flag** — `TcpNetworkClient::connectedFlag_` is a `gint` read/written only via `g_atomic_int_get/set` to prevent data races.
+- **`g_idle_add()` bridge** — The receive thread never calls GTK functions directly; it posts `IdleMessageData` payloads to the main loop.
+- **Factory functions** — Each strategy `.cpp` exports a `make*Strategy()` factory so `main.cpp` registers them through the `IReplyStrategy` interface (DIP preserved even at the registration site).
+- **`constexpr` over `#define`** — `constants.hpp` uses typed `constexpr` values inside `namespace ChatBot` instead of preprocessor macros, eliminating accidental name collisions.
